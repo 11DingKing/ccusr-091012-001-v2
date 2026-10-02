@@ -7,14 +7,14 @@ from .views import (
     CategoryListView, CategoryDetailView, CategoryBatchDeleteView, CategoryAllView,
     VarietyListView, VarietyDetailView, VarietyBatchDeleteView,
     VarietyTemplateView, VarietyImportView,
-    DashboardView, GoodsListView, StockInListView, StockOutListView,
+    GoodsListView, StockInListView, StockOutListView,
     WarningListView, ApprovalListView
 )
 
+# 注意：仪表盘统计端点 /api/dashboard/ 由 apps.reports 统一提供，
+# 本应用不再注册同名路径，以免遮蔽正式统计接口。
+
 urlpatterns = [
-    # 仪表盘
-    path('dashboard/', DashboardView.as_view(), name='dashboard'),
-    
     # 单位管理
     path('units/', UnitListView.as_view(), name='unit-list'),
     path('units/all/', UnitAllView.as_view(), name='unit-all'),

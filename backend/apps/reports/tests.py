@@ -37,6 +37,30 @@ class ReportTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["warning_goods_count"], 1)
 
+    def test_dashboard_url_serves_real_statistics_not_placeholder(self):
+        """回归：/api/dashboard/ 必须返回真实统计视图，不得被占位路由遮蔽。"""
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        data = payload["data"]
+
+        # 真实统计字段
+        self.assertEqual(data["goods_count"], 1)
+        self.assertEqual(data["warning_goods_count"], 1)
+        self.assertIn("pending_approval_count", data)
+        self.assertIn("today_in_count", data)
+        # 旧占位响应不应再出现
+        self.assertNotIn("message", data)
+
+    def test_dashboard_url_name_is_stable(self):
+        """客户端依赖的 URL 名称保持稳定。"""
+        from django.urls import resolve, reverse
+
+        self.assertEqual(reverse("dashboard"), "/api/dashboard/")
+        match = resolve("/api/dashboard/")
+        self.assertEqual(match.view_name, "dashboard")
+        self.assertEqual(match.func.view_class, DashboardView)
+
     def test_warning_job_is_idempotent_for_unread_warning(self):
         check_stock_warning()
         check_stock_warning()

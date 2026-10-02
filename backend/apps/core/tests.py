@@ -1,14 +1,83 @@
 """
 核心模块测试用例
 """
-from django.test import TestCase
-from rest_framework.test import APITestCase
+from types import ModuleType
+
+from django.core.exceptions import ImproperlyConfigured
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient, APITestCase
+from rest_framework.views import APIView
 from rest_framework import status
+from django.urls import path
 from .exceptions import (
-    BusinessException, AuthenticationException, 
+    BusinessException, AuthenticationException,
     PermissionException, NotFoundException
 )
 from .response import success_response, error_response, created_response, deleted_response
+from .routing import build_api_patterns
+
+
+class _StubView(APIView):
+    """路由校验用的空视图。"""
+    def get(self, request):
+        pass
+
+
+def _stub_urlconf(module_name, entries):
+    """entries: [(route, url_name), ...]"""
+    module = ModuleType(module_name)
+    module.urlpatterns = [
+        path(route, _StubView.as_view(), name=name) for route, name in entries
+    ]
+    return module
+
+
+class RoutingConflictTest(TestCase):
+    """路由集中注册的冲突检测。"""
+
+    def test_duplicate_path_raises_at_startup(self):
+        """两个模块注册同一路径必须在启动时直接报错，而不是静默遮蔽。"""
+        first = _stub_urlconf("fake_first", [("dashboard/", "first-dashboard")])
+        second = _stub_urlconf("fake_second", [("dashboard/", "second-dashboard")])
+
+        with self.assertRaises(ImproperlyConfigured) as ctx:
+            build_api_patterns([("api/", first), ("api/", second)])
+
+        self.assertIn("dashboard/", str(ctx.exception))
+        self.assertIn("路径冲突", str(ctx.exception))
+
+    def test_duplicate_name_raises_at_startup(self):
+        """路径不同但 URL 名称相同同样必须报错。"""
+        first = _stub_urlconf("fake_first", [("dashboard/", "dashboard")])
+        second = _stub_urlconf("fake_second", [("reports/dashboard/", "dashboard")])
+
+        with self.assertRaises(ImproperlyConfigured) as ctx:
+            build_api_patterns([("api/", first), ("api/", second)])
+
+        self.assertIn("名称冲突", str(ctx.exception))
+        self.assertIn("dashboard", str(ctx.exception))
+
+    def test_distinct_routes_build_normally(self):
+        first = _stub_urlconf("fake_first", [("goods/", "goods-list")])
+        second = _stub_urlconf("fake_second", [("dashboard/", "dashboard")])
+
+        patterns = build_api_patterns([("api/", first), ("api/", second)])
+        self.assertEqual(len(patterns), 2)
+
+
+class UnknownPathResponseTest(APITestCase):
+    """未知路径仍按统一错误信封返回。"""
+
+    @override_settings(DEBUG=False)
+    def test_unknown_path_returns_unified_error_envelope(self):
+        response = APIClient().get("/api/this-endpoint-does-not-exist/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        body = response.json()
+        self.assertFalse(body["success"])
+        self.assertEqual(body["code"], 404)
+        self.assertIn("message", body)
+        self.assertIsNone(body["data"])
 
 
 class ExceptionTest(TestCase):
