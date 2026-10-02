@@ -7,14 +7,14 @@ from .views import (
     CategoryListView, CategoryDetailView, CategoryBatchDeleteView, CategoryAllView,
     VarietyListView, VarietyDetailView, VarietyBatchDeleteView,
     VarietyTemplateView, VarietyImportView,
-    DashboardView, GoodsListView, StockInListView, StockOutListView,
+    GoodsListView, StockInListView, StockOutListView,
     WarningListView, ApprovalListView
 )
 
+# 注意：仪表盘接口由 apps.reports 提供（/api/dashboard/），
+# 本模块不得再注册同名路径，根 URLconf 会在启动时校验重复路由并直接报错。
+
 urlpatterns = [
-    # 仪表盘
-    path('dashboard/', DashboardView.as_view(), name='dashboard'),
-    
     # 单位管理
     path('units/', UnitListView.as_view(), name='unit-list'),
     path('units/all/', UnitAllView.as_view(), name='unit-all'),

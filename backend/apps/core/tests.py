@@ -1,14 +1,21 @@
 """
 核心模块测试用例
 """
+from importlib import import_module
+
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
+from django.http import HttpResponse
 from django.test import TestCase
+from django.urls import include, path
 from rest_framework.test import APITestCase
 from rest_framework import status
 from .exceptions import (
-    BusinessException, AuthenticationException, 
+    BusinessException, AuthenticationException,
     PermissionException, NotFoundException
 )
 from .response import success_response, error_response, created_response, deleted_response
+from .urlconf import validate_unique_url_patterns
 
 
 class ExceptionTest(TestCase):
@@ -106,7 +113,71 @@ class LoggingConfigTest(TestCase):
     def test_get_logger(self):
         """测试获取日志记录器"""
         from .logging_config import get_logger
-        
+
         logger = get_logger('test')
         self.assertIsNotNone(logger)
         self.assertEqual(logger.name, 'test')
+
+
+def _placeholder_view_a(request):
+    return HttpResponse('a')
+
+
+def _placeholder_view_b(request):
+    return HttpResponse('b')
+
+
+class UrlConfValidationTest(TestCase):
+    """路由冲突校验：重复注册同名端点必须在启动期报错而非静默遮蔽"""
+
+    def test_project_urlconf_passes_validation(self):
+        """项目自身的 URL 配置不存在冲突"""
+        urlconf = import_module(settings.ROOT_URLCONF)
+        validate_unique_url_patterns(urlconf.urlpatterns)  # 不应抛出异常
+
+    def test_duplicate_path_across_includes_raises(self):
+        """两个应用注册相同路径时抛出 ImproperlyConfigured"""
+        patterns = [
+            path('api/', include([
+                path('dashboard/', _placeholder_view_a, name='dashboard-a'),
+            ])),
+            path('api/', include([
+                path('dashboard/', _placeholder_view_b, name='dashboard-b'),
+            ])),
+        ]
+        with self.assertRaises(ImproperlyConfigured):
+            validate_unique_url_patterns(patterns)
+
+    def test_duplicate_route_name_raises(self):
+        """相同路由命名导致 reverse() 不确定，必须报错"""
+        patterns = [
+            path('a/', _placeholder_view_a, name='dup-name'),
+            path('b/', _placeholder_view_b, name='dup-name'),
+        ]
+        with self.assertRaises(ImproperlyConfigured):
+            validate_unique_url_patterns(patterns)
+
+    def test_unique_patterns_pass(self):
+        """路径与命名均唯一时校验通过"""
+        patterns = [
+            path('api/', include([
+                path('a/', _placeholder_view_a, name='route-a'),
+            ])),
+            path('api/', include([
+                path('b/', _placeholder_view_b, name='route-b'),
+            ])),
+        ]
+        validate_unique_url_patterns(patterns)  # 不应抛出异常
+
+
+class UnknownPathTest(TestCase):
+    """未知路径按统一错误格式返回 404"""
+
+    def test_unknown_path_returns_unified_error_format(self):
+        response = self.client.get('/api/no-such-endpoint/')
+        self.assertEqual(response.status_code, 404)
+        payload = response.json()
+        self.assertFalse(payload['success'])
+        self.assertEqual(payload['code'], 404)
+        self.assertEqual(payload['message'], '资源不存在')
+        self.assertIsNone(payload['data'])

@@ -563,16 +563,6 @@ class VarietyImportView(APIView):
 
 # ==================== 其他视图占位 ====================
 
-class DashboardView(APIView):
-    """仪表盘视图"""
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request):
-        return success_response(data={
-            'message': '仪表盘功能开发中...'
-        })
-
-
 class GoodsListView(APIView):
     """货物列表视图"""
     permission_classes = [IsAuthenticated]

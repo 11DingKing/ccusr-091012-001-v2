@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.test import TestCase
+from django.urls import resolve, reverse
 from rest_framework.test import APIClient, APIRequestFactory, force_authenticate
 
 from apps.authentication.backends import generate_token
@@ -36,6 +37,28 @@ class ReportTest(TestCase):
         response.render()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["warning_goods_count"], 1)
+
+    def test_dashboard_endpoint_returns_real_statistics(self):
+        """既有客户端地址 /api/dashboard/ 必须返回真实统计而非占位响应"""
+        response = self.client.get("/api/dashboard/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["success"])
+        data = payload["data"]
+        self.assertEqual(data["goods_count"], 1)
+        self.assertEqual(data["warning_goods_count"], 1)
+        self.assertIn("today_in_count", data)
+        self.assertIn("today_out_count", data)
+        self.assertIn("pending_approval_count", data)
+        self.assertIn("in_trend", data)
+        self.assertIn("out_trend", data)
+        self.assertNotIn("开发中", response.content.decode())
+
+    def test_dashboard_url_name_and_path_resolve_to_reports_view(self):
+        """URL 命名与路径都稳定指向 reports 应用的真实统计视图"""
+        self.assertEqual(reverse("dashboard"), "/api/dashboard/")
+        match = resolve("/api/dashboard/")
+        self.assertIs(match.func.view_class, DashboardView)
 
     def test_warning_job_is_idempotent_for_unread_warning(self):
         check_stock_warning()
